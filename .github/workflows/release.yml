@@ -1,0 +1,194 @@
+name: Build and Release
+
+on:
+  # Trigger from rgb-lib repository
+  repository_dispatch:
+    types: [rgb-lib-release]
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      rgb_lib_version:
+        description: 'rgb-lib version to use (e.g., v0.3.0-beta.4)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+            lib_name: librgblibcffi.so
+          # macOS ARM64 (Apple Silicon)
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            target: aarch64-apple-darwin
+            lib_name: librgblibcffi.dylib
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Get rgb-lib version
+        id: rgb_lib_version
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ inputs.rgb_lib_version }}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install SWIG
+        run: |
+          if [ "${{ matrix.platform }}" == "linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y swig
+          elif [ "${{ matrix.platform }}" == "darwin" ]; then
+            brew install swig
+          fi
+        shell: bash
+
+      - name: Download rgb-lib c-ffi library
+        run: |
+          DOWNLOAD_URL="https://github.com/UTEXO-Protocol/rgb-lib/releases/download/${{ steps.rgb_lib_version.outputs.version }}/rgb-lib-cffi-${{ matrix.target }}.zip"
+          echo "Downloading from: $DOWNLOAD_URL"
+          curl -L -o rgb-lib-cffi.zip "$DOWNLOAD_URL"
+          
+          # Create target directory structure
+          mkdir -p rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release
+          unzip -o rgb-lib-cffi.zip -d rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/
+          
+          ls -la rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/
+        shell: bash
+
+      - name: Prepare platform package
+        run: |
+          PACKAGE_DIR="packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$PACKAGE_DIR"
+          
+          # Copy template files
+          cp template/binding.gyp "$PACKAGE_DIR/"
+          cp template/package.json "$PACKAGE_DIR/"
+          cp template/rgblib.js "$PACKAGE_DIR/"
+          cp template/wrapper.js "$PACKAGE_DIR/"
+          cp template/swig.i "$PACKAGE_DIR/"
+          cp template/README.md "$PACKAGE_DIR/"
+          
+          # Update target in binding.gyp
+          sed -i.bak "s/%TARGET%/${{ matrix.target }}/g" "$PACKAGE_DIR/binding.gyp"
+          
+          # Update package.json
+          sed -i.bak "s/%PLATFORM%/${{ matrix.platform }}/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%ARCH%/${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%VERSION%/${{ steps.rgb_lib_version.outputs.version }}/g" "$PACKAGE_DIR/package.json"
+          
+          # Copy c-ffi library
+          mkdir -p "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release"
+          cp rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/* "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/"
+        shell: bash
+
+      - name: Generate SWIG wrapper
+        working-directory: packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
+        run: |
+          swig -c++ -javascript -node swig.i
+        shell: bash
+
+      - name: Build native module
+        working-directory: packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
+        run: |
+          npm install node-gyp
+          npx node-gyp configure
+          npx node-gyp build
+        shell: bash
+
+      - name: Package artifact
+        run: |
+          cd packages
+          zip -r ../rgb-lib-nodejs-${{ matrix.platform }}-${{ matrix.arch }}.zip rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rgb-lib-nodejs-${{ matrix.platform }}-${{ matrix.arch }}
+          path: rgb-lib-nodejs-${{ matrix.platform }}-${{ matrix.arch }}.zip
+          retention-days: 5
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            VERSION="${{ inputs.rgb_lib_version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.zip" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Node.js bindings for rgb-lib
+            
+            Based on rgb-lib ${{ steps.version.outputs.version }}
+            
+            ### Installation
+            
+            Download the package for your platform and extract it.
+            
+            ### Platforms
+            
+            - Linux x64 (`linux-x64`)
+            - macOS ARM64 / Apple Silicon (`darwin-arm64`)
+            
+            ### Changes
+            
+            See [rgb-lib release notes](https://github.com/UTEXO-Protocol/rgb-lib/releases/tag/${{ steps.version.outputs.version }})
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
