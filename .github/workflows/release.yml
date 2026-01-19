@@ -71,11 +71,26 @@ jobs:
           echo "Downloading from: $DOWNLOAD_URL"
           curl -L -o rgb-lib-cffi.zip "$DOWNLOAD_URL"
           
-          # Create target directory structure
+          # Create directory structure
           mkdir -p rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release
-          unzip -o rgb-lib-cffi.zip -d rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/
+          mkdir -p rgb-lib/bindings/c-ffi
           
+          # Extract to temp and move files
+          unzip -o rgb-lib-cffi.zip -d temp-cffi/
+          
+          # Move library files to release directory
+          mv temp-cffi/*.so temp-cffi/*.dylib temp-cffi/*.a temp-cffi/*.lib temp-cffi/*.dll \
+             rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/ 2>/dev/null || true
+          
+          # Move header files to c-ffi directory
+          mv temp-cffi/*.h temp-cffi/*.hpp rgb-lib/bindings/c-ffi/ 2>/dev/null || true
+          
+          rm -rf temp-cffi
+          
+          echo "=== Library files ==="
           ls -la rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/
+          echo "=== Header files ==="
+          ls -la rgb-lib/bindings/c-ffi/
         shell: bash
 
       - name: Prepare platform package
@@ -99,9 +114,18 @@ jobs:
           sed -i.bak "s/%ARCH%/${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
           sed -i.bak "s/%VERSION%/${{ steps.rgb_lib_version.outputs.version }}/g" "$PACKAGE_DIR/package.json"
           
-          # Copy c-ffi library
+          # Create c-ffi directory structure inside package
           mkdir -p "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release"
-          cp rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/* "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/"
+          
+          # Copy library files
+          cp rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/* "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/" 2>/dev/null || true
+          
+          # Copy header files to the expected location
+          cp rgb-lib/bindings/c-ffi/rgblib.hpp "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/" 2>/dev/null || true
+          cp rgb-lib/bindings/c-ffi/rgblib.h "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/" 2>/dev/null || true
+          
+          echo "=== Package structure ==="
+          find "$PACKAGE_DIR" -type f
         shell: bash
 
       - name: Generate SWIG wrapper
