@@ -15,24 +15,22 @@ on:
 
 jobs:
   build:
-    name: Build (${{ matrix.platform }}-${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.os }}-${{ matrix.cpu }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # Linux x64
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
+          - runner: ubuntu-latest
+            os: linux
+            cpu: x64
             target: x86_64-unknown-linux-gnu
-            lib_name: librgblibcffi.so
-          # macOS ARM64 (Apple Silicon)
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
+          # macOS ARM64 (Apple Silicon) - needs native runner
+          - runner: macos-latest
+            os: darwin
+            cpu: arm64
             target: aarch64-apple-darwin
-            lib_name: librgblibcffi.dylib
 
     steps:
       - name: Checkout repository
@@ -55,134 +53,114 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
       - name: Install SWIG
         run: |
-          if [ "${{ matrix.platform }}" == "linux" ]; then
+          if [ "${{ matrix.os }}" == "linux" ]; then
             sudo apt-get update
             sudo apt-get install -y swig
-          elif [ "${{ matrix.platform }}" == "darwin" ]; then
+          elif [ "${{ matrix.os }}" == "darwin" ]; then
             brew install swig
           fi
         shell: bash
 
-      - name: Download rgb-lib c-ffi library
+      - name: Update rgb-lib submodule to target version
         run: |
-          DOWNLOAD_URL="https://github.com/UTEXO-Protocol/rgb-lib/releases/download/${{ steps.rgb_lib_version.outputs.version }}/rgb-lib-cffi-${{ matrix.target }}.zip"
-          echo "Downloading from: $DOWNLOAD_URL"
-          curl -L -o rgb-lib-cffi.zip "$DOWNLOAD_URL"
-          
-          # Create directory structure
-          mkdir -p rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release
-          mkdir -p rgb-lib/bindings/c-ffi
-          
-          # Extract to temp and move files
-          unzip -o rgb-lib-cffi.zip -d temp-cffi/
-          
-          # Move library files to release directory
-          mv temp-cffi/*.so temp-cffi/*.dylib temp-cffi/*.a temp-cffi/*.lib temp-cffi/*.dll \
-             rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/ 2>/dev/null || true
-          
-          # Move header files to c-ffi directory
-          mv temp-cffi/*.h temp-cffi/*.hpp rgb-lib/bindings/c-ffi/ 2>/dev/null || true
-          
-          rm -rf temp-cffi
-          
-          echo "=== Library files ==="
-          ls -la rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/
-          echo "=== Header files ==="
-          ls -la rgb-lib/bindings/c-ffi/
+          cd rgb-lib
+          git fetch --all --tags
+          git checkout ${{ steps.rgb_lib_version.outputs.version }} || git checkout origin/master
+          cd ..
         shell: bash
 
       - name: Prepare platform package
         run: |
-          PACKAGE_DIR="packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}"
-          mkdir -p "$PACKAGE_DIR"
-          
-          # Copy template files
-          cp template/binding.gyp "$PACKAGE_DIR/"
-          cp template/package.json "$PACKAGE_DIR/"
-          cp template/rgblib.js "$PACKAGE_DIR/"
-          cp template/wrapper.js "$PACKAGE_DIR/"
-          cp template/swig.i "$PACKAGE_DIR/"
-          cp template/README.md "$PACKAGE_DIR/"
+          PLATFORM="${{ matrix.os }}-${{ matrix.cpu }}"
+          PLATFORM_DIR="platforms/$PLATFORM"
+          TARGET="${{ matrix.target }}"
           
           # Determine library filename and extension
-          if [ "${{ matrix.platform }}" == "linux" ]; then
-            LIB_FILENAME="librgblibcffi"
-            LIB_EXTENSION="so"
-            OS_NAME="linux"
-          elif [ "${{ matrix.platform }}" == "darwin" ]; then
-            LIB_FILENAME="librgblibcffi"
-            LIB_EXTENSION="dylib"
-            OS_NAME="darwin"
+          if [ "${{ matrix.os }}" == "linux" ]; then
+            FILENAME="librgblibcffi"
+            EXT="so"
+          elif [ "${{ matrix.os }}" == "darwin" ]; then
+            FILENAME="librgblibcffi"
+            EXT="dylib"
           else
-            LIB_FILENAME="rgblibcffi"
-            LIB_EXTENSION="dll"
-            OS_NAME="win32"
+            FILENAME="rgblibcffi"
+            EXT="dll"
           fi
           
-          # Update binding.gyp
-          sed -i.bak "s/%TARGET%/${{ matrix.target }}/g" "$PACKAGE_DIR/binding.gyp"
+          # Get version without 'v' prefix
+          VERSION=$(echo "${{ steps.rgb_lib_version.outputs.version }}" | sed 's/^v//')
           
-          # Update package.json with all placeholders
-          sed -i.bak "s/%PLATFORM%/${{ matrix.platform }}-${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%OS%/$OS_NAME/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%CPU%/${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
-          # Remove 'v' prefix from version for npm
-          NPM_VERSION=$(echo "${{ steps.rgb_lib_version.outputs.version }}" | sed 's/^v//')
-          sed -i.bak "s/%VERSION%/$NPM_VERSION/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%TARGET%/${{ matrix.target }}/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%FILENAME%/$LIB_FILENAME/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%EXTENSION%/$LIB_EXTENSION/g" "$PACKAGE_DIR/package.json"
+          # Setup platform directory
+          rm -rf "$PLATFORM_DIR"
+          mkdir -p platforms
+          cp -a template "$PLATFORM_DIR"
+          cp -a rgb-lib "$PLATFORM_DIR/"
+          
+          # Configure binding.gyp
+          sed -i.bak "s/%TARGET%/$TARGET/g" "$PLATFORM_DIR/binding.gyp"
+          
+          # Configure package.json
+          sed -i.bak "s/%PLATFORM%/$PLATFORM/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%OS%/${{ matrix.os }}/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%CPU%/${{ matrix.cpu }}/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%FILENAME%/$FILENAME/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%EXTENSION%/$EXT/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%TARGET%/$TARGET/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%VERSION%/$VERSION/g" "$PLATFORM_DIR/package.json"
+          
+          # Configure README.md
+          sed -i.bak "s/%OS%/${{ matrix.os }}/g" "$PLATFORM_DIR/README.md"
+          sed -i.bak "s/%CPU%/${{ matrix.cpu }}/g" "$PLATFORM_DIR/README.md"
           
           # Remove backup files
-          rm -f "$PACKAGE_DIR"/*.bak
+          find "$PLATFORM_DIR" -name "*.bak" -delete
           
-          # Create c-ffi directory structure inside package
-          mkdir -p "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release"
-          
-          # Copy library files
-          cp rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/* "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release/" 2>/dev/null || true
-          
-          # Copy header files to the expected location
-          cp rgb-lib/bindings/c-ffi/rgblib.hpp "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/" 2>/dev/null || true
-          cp rgb-lib/bindings/c-ffi/rgblib.h "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/" 2>/dev/null || true
-          
-          echo "=== Package structure ==="
-          find "$PACKAGE_DIR" -type f
+          echo "platform_dir=$PLATFORM_DIR" >> $GITHUB_OUTPUT
+          echo "Platform directory prepared: $PLATFORM_DIR"
+        shell: bash
+        id: prepare
+
+      - name: Build Rust library (c-ffi)
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}/rgb-lib/bindings/c-ffi
+        run: |
+          cargo build --release --target ${{ matrix.target }} --features camel_case
         shell: bash
 
       - name: Generate SWIG wrapper
-        working-directory: packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
         run: |
           swig -c++ -javascript -node swig.i
         shell: bash
 
-      - name: Build native module
-        working-directory: packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
+      - name: Build native Node.js module
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
         run: |
-          # Install node-gyp globally
           npm install -g node-gyp
-          
-          # Install package dependencies (node-addon-api, etc)
           npm install --ignore-scripts
-          
-          # Build native module
           node-gyp configure
           node-gyp build
         shell: bash
 
       - name: Package artifact
         run: |
-          cd packages
-          zip -r ../rgb-lib-nodejs-${{ matrix.platform }}-${{ matrix.arch }}.zip rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
+          PLATFORM="${{ matrix.os }}-${{ matrix.cpu }}"
+          cd platforms
+          tar -czvf ../rgb-lib-nodejs-$PLATFORM.tar.gz $PLATFORM
         shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rgb-lib-nodejs-${{ matrix.platform }}-${{ matrix.arch }}
-          path: rgb-lib-nodejs-${{ matrix.platform }}-${{ matrix.arch }}.zip
+          name: rgb-lib-nodejs-${{ matrix.os }}-${{ matrix.cpu }}
+          path: rgb-lib-nodejs-${{ matrix.os }}-${{ matrix.cpu }}.tar.gz
           retention-days: 5
 
   release:
@@ -215,7 +193,7 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          find artifacts -name "*.zip" -exec cp {} release-assets/ \;
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
           ls -la release-assets/
 
       - name: Create Release
@@ -230,7 +208,12 @@ jobs:
             
             ### Installation
             
-            Download the package for your platform and extract it.
+            Download and extract the package for your platform, then:
+            
+            ```bash
+            cd <platform-dir>
+            npm install
+            ```
             
             ### Platforms
             
@@ -245,4 +228,3 @@ jobs:
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
