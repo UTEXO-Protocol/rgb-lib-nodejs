@@ -106,13 +106,37 @@ jobs:
           cp template/swig.i "$PACKAGE_DIR/"
           cp template/README.md "$PACKAGE_DIR/"
           
-          # Update target in binding.gyp
+          # Determine library filename and extension
+          if [ "${{ matrix.platform }}" == "linux" ]; then
+            LIB_FILENAME="librgblibcffi"
+            LIB_EXTENSION="so"
+            OS_NAME="linux"
+          elif [ "${{ matrix.platform }}" == "darwin" ]; then
+            LIB_FILENAME="librgblibcffi"
+            LIB_EXTENSION="dylib"
+            OS_NAME="darwin"
+          else
+            LIB_FILENAME="rgblibcffi"
+            LIB_EXTENSION="dll"
+            OS_NAME="win32"
+          fi
+          
+          # Update binding.gyp
           sed -i.bak "s/%TARGET%/${{ matrix.target }}/g" "$PACKAGE_DIR/binding.gyp"
           
-          # Update package.json
-          sed -i.bak "s/%PLATFORM%/${{ matrix.platform }}/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%ARCH%/${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
-          sed -i.bak "s/%VERSION%/${{ steps.rgb_lib_version.outputs.version }}/g" "$PACKAGE_DIR/package.json"
+          # Update package.json with all placeholders
+          sed -i.bak "s/%PLATFORM%/${{ matrix.platform }}-${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%OS%/$OS_NAME/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%CPU%/${{ matrix.arch }}/g" "$PACKAGE_DIR/package.json"
+          # Remove 'v' prefix from version for npm
+          NPM_VERSION=$(echo "${{ steps.rgb_lib_version.outputs.version }}" | sed 's/^v//')
+          sed -i.bak "s/%VERSION%/$NPM_VERSION/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%TARGET%/${{ matrix.target }}/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%FILENAME%/$LIB_FILENAME/g" "$PACKAGE_DIR/package.json"
+          sed -i.bak "s/%EXTENSION%/$LIB_EXTENSION/g" "$PACKAGE_DIR/package.json"
+          
+          # Remove backup files
+          rm -f "$PACKAGE_DIR"/*.bak
           
           # Create c-ffi directory structure inside package
           mkdir -p "$PACKAGE_DIR/rgb-lib/bindings/c-ffi/target/${{ matrix.target }}/release"
@@ -137,9 +161,15 @@ jobs:
       - name: Build native module
         working-directory: packages/rgb-lib-${{ matrix.platform }}-${{ matrix.arch }}
         run: |
-          npm install node-gyp
-          npx node-gyp configure
-          npx node-gyp build
+          # Install node-gyp globally
+          npm install -g node-gyp
+          
+          # Install package dependencies (node-addon-api, etc)
+          npm install --ignore-scripts
+          
+          # Build native module
+          node-gyp configure
+          node-gyp build
         shell: bash
 
       - name: Package artifact
