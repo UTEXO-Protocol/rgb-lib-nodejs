@@ -300,6 +300,46 @@ exports.Wallet = class Wallet {
         );
     }
 
+    createUtxosBegin(online, upTo, num, size, feeRate, skipSync) {
+        const params = { online, upTo, num, size, feeRate, skipSync };
+        const expectedTypes = {
+            online: "object",
+            upTo: "boolean",
+            num: "u8?",
+            size: "u32?",
+            feeRate: "u64",
+            skipSync: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return lib.rgblib_create_utxos_begin(
+            this.wallet,
+            online,
+            upTo,
+            num,
+            size,
+            feeRate,
+            skipSync,
+        );
+    }
+
+    createUtxosEnd(online, signedPsbt, skipSync) {
+        const params = { online, signedPsbt, skipSync };
+        const expectedTypes = {
+            online: "object",
+            signedPsbt: "string",
+            skipSync: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return JSON.parse(
+            lib.rgblib_create_utxos_end(
+                this.wallet,
+                online,
+                signedPsbt,
+                skipSync,
+            ),
+        );
+    }
+
     getAddress() {
         return lib.rgblib_get_address(this.wallet);
     }
@@ -556,6 +596,54 @@ exports.Wallet = class Wallet {
         );
     }
 
+    sendBegin(online, recipientMap, donation, feeRate, minConfirmations) {
+        const params = {
+            online,
+            recipientMap,
+            donation,
+            feeRate,
+            minConfirmations,
+        };
+        const expectedTypes = {
+            online: "object",
+            recipientMap: "object",
+            donation: "boolean",
+            feeRate: "u64",
+            minConfirmations: "u8",
+        };
+        validateTypes(params, expectedTypes);
+        return lib.rgblib_send_begin(
+            this.wallet,
+            online,
+            JSON.stringify(recipientMap),
+            donation,
+            feeRate,
+            minConfirmations,
+        );
+    }
+
+    sendEnd(online, signedPsbt, skipSync) {
+        const params = {
+            online,
+            signedPsbt,
+            skipSync,
+        };
+        const expectedTypes = {
+            online: "object",
+            signedPsbt: "string",
+            skipSync: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return JSON.parse(
+            lib.rgblib_send_end(
+                this.wallet,
+                online,
+                signedPsbt,
+                skipSync,
+            ),
+        );
+    }
+
     sendBtc(online, address, amount, feeRate, skipSync) {
         const params = {
             online,
@@ -632,5 +720,29 @@ exports.Wallet = class Wallet {
                 minConfirmations,
             ),
         );
+    }
+};
+
+exports.Invoice = class Invoice {
+    constructor(invoiceString) {
+        const params = { invoiceString };
+        const expectedTypes = {
+            invoiceString: "string",
+        };
+        validateTypes(params, expectedTypes);
+        this.invoice = lib.rgblib_invoice_new(invoiceString);
+    }
+
+    drop() {
+        lib.free_invoice(this.invoice);
+        this.invoice = null;
+    }
+
+    invoiceData() {
+        return JSON.parse(lib.rgblib_invoice_data(this.invoice));
+    }
+
+    invoiceString() {
+        return lib.rgblib_invoice_string(this.invoice);
     }
 };
