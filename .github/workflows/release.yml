@@ -73,7 +73,9 @@ jobs:
         run: |
           cd rgb-lib
           git fetch --all --tags
-          git checkout ${{ steps.rgb_lib_version.outputs.version }} || git checkout origin/master
+          git checkout ${{ steps.rgb_lib_version.outputs.version }}
+          echo "Checked out rgb-lib version:"
+          git log --oneline -1
           cd ..
         shell: bash
 
