@@ -1,6 +1,6 @@
 [submodule "rgb-lib"]
 	path = rgb-lib
-	url = https://github.com/RGB-Tools/rgb-lib.git
+	url = https://github.com/UTEXO-Protocol/rgb-lib.git
 [submodule "cross"]
 	path = cross
 	url = https://github.com/nicbus/cross
