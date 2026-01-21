@@ -1,0 +1,232 @@
+name: Build and Release
+
+on:
+  # Trigger from rgb-lib repository
+  repository_dispatch:
+    types: [rgb-lib-release]
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      rgb_lib_version:
+        description: 'rgb-lib version to use (e.g., v0.3.0-beta.4)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }}-${{ matrix.cpu }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x64
+          - runner: ubuntu-latest
+            os: linux
+            cpu: x64
+            target: x86_64-unknown-linux-gnu
+          # macOS ARM64 (Apple Silicon) - needs native runner
+          - runner: macos-latest
+            os: darwin
+            cpu: arm64
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Get rgb-lib version
+        id: rgb_lib_version
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ inputs.rgb_lib_version }}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Install SWIG
+        run: |
+          if [ "${{ matrix.os }}" == "linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y swig
+          elif [ "${{ matrix.os }}" == "darwin" ]; then
+            brew install swig
+          fi
+        shell: bash
+
+      - name: Update rgb-lib submodule to target version
+        run: |
+          cd rgb-lib
+          git fetch --all --tags
+          git checkout ${{ steps.rgb_lib_version.outputs.version }}
+          echo "Checked out rgb-lib version:"
+          git log --oneline -1
+          cd ..
+        shell: bash
+
+      - name: Prepare platform package
+        run: |
+          PLATFORM="${{ matrix.os }}-${{ matrix.cpu }}"
+          PLATFORM_DIR="platforms/$PLATFORM"
+          TARGET="${{ matrix.target }}"
+          
+          # Determine library filename and extension
+          if [ "${{ matrix.os }}" == "linux" ]; then
+            FILENAME="librgblibcffi"
+            EXT="so"
+          elif [ "${{ matrix.os }}" == "darwin" ]; then
+            FILENAME="librgblibcffi"
+            EXT="dylib"
+          else
+            FILENAME="rgblibcffi"
+            EXT="dll"
+          fi
+          
+          # Get version without 'v' prefix
+          VERSION=$(echo "${{ steps.rgb_lib_version.outputs.version }}" | sed 's/^v//')
+          
+          # Setup platform directory
+          rm -rf "$PLATFORM_DIR"
+          mkdir -p platforms
+          cp -a template "$PLATFORM_DIR"
+          cp -a rgb-lib "$PLATFORM_DIR/"
+          
+          # Configure binding.gyp
+          sed -i.bak "s/%TARGET%/$TARGET/g" "$PLATFORM_DIR/binding.gyp"
+          
+          # Configure package.json
+          sed -i.bak "s/%PLATFORM%/$PLATFORM/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%OS%/${{ matrix.os }}/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%CPU%/${{ matrix.cpu }}/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%FILENAME%/$FILENAME/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%EXTENSION%/$EXT/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%TARGET%/$TARGET/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%VERSION%/$VERSION/g" "$PLATFORM_DIR/package.json"
+          
+          # Configure README.md
+          sed -i.bak "s/%OS%/${{ matrix.os }}/g" "$PLATFORM_DIR/README.md"
+          sed -i.bak "s/%CPU%/${{ matrix.cpu }}/g" "$PLATFORM_DIR/README.md"
+          
+          # Remove backup files
+          find "$PLATFORM_DIR" -name "*.bak" -delete
+          
+          echo "platform_dir=$PLATFORM_DIR" >> $GITHUB_OUTPUT
+          echo "Platform directory prepared: $PLATFORM_DIR"
+        shell: bash
+        id: prepare
+
+      - name: Build Rust library (c-ffi)
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}/rgb-lib/bindings/c-ffi
+        run: |
+          cargo build --release --target ${{ matrix.target }} --features camel_case
+        shell: bash
+
+      - name: Generate SWIG wrapper
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
+        run: |
+          swig -c++ -javascript -node swig.i
+        shell: bash
+
+      - name: Build native Node.js module
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
+        run: |
+          npm install -g node-gyp
+          npm install --ignore-scripts
+          node-gyp configure
+          node-gyp build
+        shell: bash
+
+      - name: Package artifact
+        run: |
+          PLATFORM="${{ matrix.os }}-${{ matrix.cpu }}"
+          cd platforms
+          tar -czvf ../rgb-lib-nodejs-$PLATFORM.tar.gz $PLATFORM
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rgb-lib-nodejs-${{ matrix.os }}-${{ matrix.cpu }}
+          path: rgb-lib-nodejs-${{ matrix.os }}-${{ matrix.cpu }}.tar.gz
+          retention-days: 5
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            VERSION="${{ inputs.rgb_lib_version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Node.js bindings for rgb-lib
+            
+            Based on rgb-lib ${{ steps.version.outputs.version }}
+            
+            ### Installation
+            
+            Download and extract the package for your platform, then:
+            
+            ```bash
+            cd <platform-dir>
+            npm install
+            ```
+            
+            ### Platforms
+            
+            - Linux x64 (`linux-x64`)
+            - macOS ARM64 / Apple Silicon (`darwin-arm64`)
+            
+            ### Changes
+            
+            See [rgb-lib release notes](https://github.com/UTEXO-Protocol/rgb-lib/releases/tag/${{ steps.version.outputs.version }})
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
