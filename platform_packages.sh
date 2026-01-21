@@ -179,10 +179,10 @@ _build_package() {
         "$platform_dir/package.json"
 
     # set platform-specific bits in README.md
-    sed -i \
-        -e "s/%OS%/$os/" \
-        -e "s/%CPU%/$cpu/" \
-        "$platform_dir/README.md"
+    # sed -i \
+    #     -e "s/%OS%/$os/" \
+    #     -e "s/%CPU%/$cpu/" \
+    #     "$platform_dir/README.md"
 
     # build
     pushd "$platform_dir"
