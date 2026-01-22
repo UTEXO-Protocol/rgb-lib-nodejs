@@ -38,7 +38,7 @@ jobs:
             lib_filename: librgblibcffi
             lib_ext: so
           # macOS x64 (Intel)
-          - runner: macos-13
+          - runner: macos-15
             os: darwin
             cpu: x64
             platform: darwin-x64
