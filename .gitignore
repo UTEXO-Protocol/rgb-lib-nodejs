@@ -6,3 +6,4 @@
 /package-lock.json
 /platforms/
 /swig_wrap.cxx
+.idea/
