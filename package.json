@@ -1,5 +1,5 @@
 {
-  "name": "rgb-lib",
+  "name": "@utexo-protocol/rgb-lib",
   "version": "0.3.0-beta.4",
   "description": "Node.js bindings for rgb-lib",
   "main": "index.js",
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RGB-Tools/rgb-lib-nodejs.git"
+    "url": "git+https://github.com/UTEXO-Protocol/rgb-lib-nodejs.git"
   },
   "keywords": [
     "rgb",
@@ -24,17 +24,17 @@
   "author": "Zoe Faltibà <zoefaltiba@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/RGB-Tools/rgb-lib-nodejs/issues"
+    "url": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs/issues"
   },
-  "homepage": "https://github.com/RGB-Tools/rgb-lib-nodejs#readme",
+  "homepage": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs#readme",
   "devDependencies": {
     "prettier": "^3.3.3"
   },
   "optionalDependencies": {
-    "@rgb-tools/rgb-lib-linux-x64": "0.3.0-beta.4",
-    "@rgb-tools/rgb-lib-linux-arm64": "0.3.0-beta.4",
-    "@rgb-tools/rgb-lib-darwin-x64": "0.3.0-beta.4",
-    "@rgb-tools/rgb-lib-darwin-arm64": "0.3.0-beta.4",
-    "@rgb-tools/rgb-lib-win32-x64": "0.3.0-beta.4"
+    "@utexo-protocol/rgb-lib-linux-x64": "0.3.0-beta.4",
+    "@utexo-protocol/rgb-lib-linux-arm64": "0.3.0-beta.4",
+    "@utexo-protocol/rgb-lib-darwin-x64": "0.3.0-beta.4",
+    "@utexo-protocol/rgb-lib-darwin-arm64": "0.3.0-beta.4",
+    "@utexo-protocol/rgb-lib-win32-x64": "0.3.0-beta.4"
   }
 }

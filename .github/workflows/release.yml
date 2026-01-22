@@ -15,7 +15,7 @@ on:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }}-${{ matrix.cpu }})
+    name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -25,12 +25,42 @@ jobs:
           - runner: ubuntu-latest
             os: linux
             cpu: x64
+            platform: linux-x64
             target: x86_64-unknown-linux-gnu
-          # macOS ARM64 (Apple Silicon) - needs native runner
+            lib_filename: librgblibcffi
+            lib_ext: so
+          # Linux ARM64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            cpu: arm64
+            platform: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            lib_filename: librgblibcffi
+            lib_ext: so
+          # macOS x64 (Intel)
+          - runner: macos-13
+            os: darwin
+            cpu: x64
+            platform: darwin-x64
+            target: x86_64-apple-darwin
+            lib_filename: librgblibcffi
+            lib_ext: dylib
+          # macOS ARM64 (Apple Silicon)
           - runner: macos-latest
             os: darwin
             cpu: arm64
+            platform: darwin-arm64
             target: aarch64-apple-darwin
+            lib_filename: librgblibcffi
+            lib_ext: dylib
+          # Windows x64
+          - runner: windows-latest
+            os: win32
+            cpu: x64
+            platform: win32-x64
+            target: x86_64-pc-windows-msvc
+            lib_filename: rgblibcffi
+            lib_ext: dll
 
     steps:
       - name: Checkout repository
@@ -52,6 +82,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -59,15 +90,19 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
-      - name: Install SWIG
+      - name: Install SWIG (Linux)
+        if: matrix.os == 'linux'
         run: |
-          if [ "${{ matrix.os }}" == "linux" ]; then
-            sudo apt-get update
-            sudo apt-get install -y swig
-          elif [ "${{ matrix.os }}" == "darwin" ]; then
-            brew install swig
-          fi
-        shell: bash
+          sudo apt-get update
+          sudo apt-get install -y swig
+
+      - name: Install SWIG (macOS)
+        if: matrix.os == 'darwin'
+        run: brew install swig
+
+      - name: Install SWIG (Windows)
+        if: matrix.os == 'win32'
+        run: choco install swig -y
 
       - name: Update rgb-lib submodule to target version
         run: |
@@ -81,21 +116,11 @@ jobs:
 
       - name: Prepare platform package
         run: |
-          PLATFORM="${{ matrix.os }}-${{ matrix.cpu }}"
+          PLATFORM="${{ matrix.platform }}"
           PLATFORM_DIR="platforms/$PLATFORM"
           TARGET="${{ matrix.target }}"
-          
-          # Determine library filename and extension
-          if [ "${{ matrix.os }}" == "linux" ]; then
-            FILENAME="librgblibcffi"
-            EXT="so"
-          elif [ "${{ matrix.os }}" == "darwin" ]; then
-            FILENAME="librgblibcffi"
-            EXT="dylib"
-          else
-            FILENAME="rgblibcffi"
-            EXT="dll"
-          fi
+          FILENAME="${{ matrix.lib_filename }}"
+          EXT="${{ matrix.lib_ext }}"
           
           # Get version without 'v' prefix
           VERSION=$(echo "${{ steps.rgb_lib_version.outputs.version }}" | sed 's/^v//')
@@ -126,20 +151,19 @@ jobs:
           find "$PLATFORM_DIR" -name "*.bak" -delete
           
           echo "platform_dir=$PLATFORM_DIR" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Platform directory prepared: $PLATFORM_DIR"
         shell: bash
         id: prepare
 
       - name: Build Rust library (c-ffi)
         working-directory: ${{ steps.prepare.outputs.platform_dir }}/rgb-lib/bindings/c-ffi
-        run: |
-          cargo build --release --target ${{ matrix.target }} --features camel_case
+        run: cargo build --release --target ${{ matrix.target }} --features camel_case
         shell: bash
 
       - name: Generate SWIG wrapper
         working-directory: ${{ steps.prepare.outputs.platform_dir }}
-        run: |
-          swig -c++ -javascript -node swig.i
+        run: swig -c++ -javascript -node swig.i
         shell: bash
 
       - name: Build native Node.js module
@@ -151,9 +175,16 @@ jobs:
           node-gyp build
         shell: bash
 
-      - name: Package artifact
+      - name: Publish platform package to npm
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
         run: |
-          PLATFORM="${{ matrix.os }}-${{ matrix.cpu }}"
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Package artifact for GitHub Release
+        run: |
+          PLATFORM="${{ matrix.platform }}"
           cd platforms
           tar -czvf ../rgb-lib-nodejs-$PLATFORM.tar.gz $PLATFORM
         shell: bash
@@ -161,13 +192,93 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rgb-lib-nodejs-${{ matrix.os }}-${{ matrix.cpu }}
-          path: rgb-lib-nodejs-${{ matrix.os }}-${{ matrix.cpu }}.tar.gz
+          name: rgb-lib-nodejs-${{ matrix.platform }}
+          path: rgb-lib-nodejs-${{ matrix.platform }}.tar.gz
           retention-days: 5
 
-  release:
-    name: Create Release
+  publish-main-package:
+    name: Publish Main Package
     needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Get version info
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            VERSION="${{ inputs.rgb_lib_version }}"
+          fi
+          # Remove 'v' prefix for npm
+          NPM_VERSION=$(echo "$VERSION" | sed 's/^v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "npm_version=$NPM_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version and dependencies
+        run: |
+          VERSION="${{ steps.version.outputs.npm_version }}"
+          
+          # Update main package version and all optionalDependencies
+          cat > package.json << 'EOF'
+          {
+            "name": "@utexo-protocol/rgb-lib",
+            "version": "${VERSION}",
+            "description": "Node.js bindings for rgb-lib",
+            "main": "index.js",
+            "files": [
+              "index.js"
+            ],
+            "scripts": {
+              "test": "echo \"No tests available\" && exit 1"
+            },
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/UTEXO-Protocol/rgb-lib-nodejs.git"
+            },
+            "keywords": [
+              "rgb",
+              "bitcoin"
+            ],
+            "author": "UTEXO Protocol",
+            "license": "MIT",
+            "bugs": {
+              "url": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs/issues"
+            },
+            "homepage": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs#readme",
+            "optionalDependencies": {
+              "@utexo-protocol/rgb-lib-linux-x64": "${VERSION}",
+              "@utexo-protocol/rgb-lib-linux-arm64": "${VERSION}",
+              "@utexo-protocol/rgb-lib-darwin-x64": "${VERSION}",
+              "@utexo-protocol/rgb-lib-darwin-arm64": "${VERSION}",
+              "@utexo-protocol/rgb-lib-win32-x64": "${VERSION}"
+            }
+          }
+          EOF
+          
+          # Replace ${VERSION} with actual version
+          sed -i "s/\${VERSION}/$VERSION/g" package.json
+          
+          echo "Updated package.json:"
+          cat package.json
+
+      - name: Publish main package to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release:
+    name: Create GitHub Release
+    needs: [build, publish-main-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -208,19 +319,27 @@ jobs:
             
             Based on rgb-lib ${{ steps.version.outputs.version }}
             
-            ### Installation
-            
-            Download and extract the package for your platform, then:
+            ### Installation via npm (recommended)
             
             ```bash
-            cd <platform-dir>
-            npm install
+            npm install @utexo-protocol/rgb-lib
             ```
+            
+            The correct platform-specific package will be installed automatically.
             
             ### Platforms
             
-            - Linux x64 (`linux-x64`)
-            - macOS ARM64 / Apple Silicon (`darwin-arm64`)
+            | Platform | npm package |
+            |----------|-------------|
+            | Linux x64 | `@utexo-protocol/rgb-lib-linux-x64` |
+            | Linux ARM64 | `@utexo-protocol/rgb-lib-linux-arm64` |
+            | macOS x64 (Intel) | `@utexo-protocol/rgb-lib-darwin-x64` |
+            | macOS ARM64 (Apple Silicon) | `@utexo-protocol/rgb-lib-darwin-arm64` |
+            | Windows x64 | `@utexo-protocol/rgb-lib-win32-x64` |
+            
+            ### Manual Installation
+            
+            Download the package for your platform from the assets below.
             
             ### Changes
             

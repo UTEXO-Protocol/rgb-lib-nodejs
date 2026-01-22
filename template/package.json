@@ -1,5 +1,5 @@
 {
-  "name": "@rgb-tools/rgb-lib-%PLATFORM%",
+  "name": "@utexo-protocol/rgb-lib-%PLATFORM%",
   "version": "%VERSION%",
   "description": "Node.js bindings for rgb-lib on %PLATFORM%",
   "main": "wrapper.js",
@@ -30,9 +30,9 @@
   "author": "Zoe Faltibà <zoefaltiba@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/RGB-Tools/rgb-lib-nodejs/issues"
+    "url": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs/issues"
   },
-  "homepage": "https://github.com/RGB-Tools/rgb-lib-nodejs#readme",
+  "homepage": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs#readme",
   "dependencies": {
     "big.js": "^6.2.2",
     "node-addon-api": "^8.3.0",

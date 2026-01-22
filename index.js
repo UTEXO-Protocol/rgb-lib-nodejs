@@ -23,5 +23,5 @@ if (platform === "win32" && arch === "arm64") {
     process.exit(1);
 }
 
-let nativePackageName = `@rgb-tools/rgb-lib-${platform}-${arch}`;
+let nativePackageName = `@utexo-protocol/rgb-lib-${platform}-${arch}`;
 module.exports = require(nativePackageName);
