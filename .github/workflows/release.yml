@@ -100,9 +100,13 @@ jobs:
         if: matrix.os == 'darwin'
         run: brew install swig
 
-      - name: Install SWIG (Windows)
+      - name: Install build tools (Windows)
         if: matrix.os == 'win32'
-        run: choco install swig -y
+        run: |
+          choco install swig -y
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          choco install nasm -y
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
 
       - name: Update rgb-lib submodule to target version
         run: |
