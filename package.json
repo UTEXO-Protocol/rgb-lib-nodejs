@@ -1,6 +1,6 @@
 {
   "name": "@utexo-protocol/rgb-lib",
-  "version": "0.3.0-beta.4",
+  "version": "0.3.0-beta.8",
   "description": "Node.js bindings for rgb-lib",
   "main": "index.js",
   "files": [
@@ -31,8 +31,8 @@
     "prettier": "^3.3.3"
   },
   "optionalDependencies": {
-    "@utexo-protocol/rgb-lib-linux-x64": "0.3.0-beta.4",
-    "@utexo-protocol/rgb-lib-linux-arm64": "0.3.0-beta.4",
-    "@utexo-protocol/rgb-lib-darwin-arm64": "0.3.0-beta.4"
+    "@utexo-protocol/rgb-lib-linux-x64": "0.3.0-beta.8",
+    "@utexo-protocol/rgb-lib-linux-arm64": "0.3.0-beta.8",
+    "@utexo-protocol/rgb-lib-darwin-arm64": "0.3.0-beta.8"
   }
 }
