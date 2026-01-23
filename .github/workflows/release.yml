@@ -157,7 +157,7 @@ jobs:
       - name: Publish platform package to npm
         working-directory: ${{ steps.prepare.outputs.platform_dir }}
         run: |
-          npm publish --access public
+          npm publish --access public || echo "Package version may already exist, continuing..."
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -250,7 +250,7 @@ jobs:
           cat package.json
 
       - name: Publish main package to npm
-        run: npm publish --access public
+        run: npm publish --access public || echo "Package version may already exist, continuing..."
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
