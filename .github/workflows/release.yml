@@ -37,14 +37,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
             lib_filename: librgblibcffi
             lib_ext: so
-          # macOS x64 (Intel)
-          - runner: macos-15
-            os: darwin
-            cpu: x64
-            platform: darwin-x64
-            target: x86_64-apple-darwin
-            lib_filename: librgblibcffi
-            lib_ext: dylib
           # macOS ARM64 (Apple Silicon)
           - runner: macos-latest
             os: darwin
@@ -53,15 +45,6 @@ jobs:
             target: aarch64-apple-darwin
             lib_filename: librgblibcffi
             lib_ext: dylib
-          # Windows x64
-          - runner: windows-latest
-            os: win32
-            cpu: x64
-            platform: win32-x64
-            target: x86_64-pc-windows-msvc
-            lib_filename: rgblibcffi
-            lib_ext: dll
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -99,14 +82,6 @@ jobs:
       - name: Install SWIG (macOS)
         if: matrix.os == 'darwin'
         run: brew install swig
-
-      - name: Install build tools (Windows)
-        if: matrix.os == 'win32'
-        run: |
-          choco install swig -y
-          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
-          choco install nasm -y
-          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
 
       - name: Update rgb-lib submodule to target version
         run: |
@@ -203,6 +178,7 @@ jobs:
   publish-main-package:
     name: Publish Main Package
     needs: build
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
 
     steps:
@@ -262,9 +238,7 @@ jobs:
             "optionalDependencies": {
               "@utexo-protocol/rgb-lib-linux-x64": "${VERSION}",
               "@utexo-protocol/rgb-lib-linux-arm64": "${VERSION}",
-              "@utexo-protocol/rgb-lib-darwin-x64": "${VERSION}",
-              "@utexo-protocol/rgb-lib-darwin-arm64": "${VERSION}",
-              "@utexo-protocol/rgb-lib-win32-x64": "${VERSION}"
+              "@utexo-protocol/rgb-lib-darwin-arm64": "${VERSION}"
             }
           }
           EOF
@@ -337,9 +311,7 @@ jobs:
             |----------|-------------|
             | Linux x64 | `@utexo-protocol/rgb-lib-linux-x64` |
             | Linux ARM64 | `@utexo-protocol/rgb-lib-linux-arm64` |
-            | macOS x64 (Intel) | `@utexo-protocol/rgb-lib-darwin-x64` |
             | macOS ARM64 (Apple Silicon) | `@utexo-protocol/rgb-lib-darwin-arm64` |
-            | Windows x64 | `@utexo-protocol/rgb-lib-win32-x64` |
             
             ### Manual Installation
             
