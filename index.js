@@ -20,5 +20,5 @@ if (!isSupported) {
     process.exit(1);
 }
 
-let nativePackageName = `@utexo-protocol/rgb-lib-${platform}-${arch}`;
+let nativePackageName = `@utexo/rgb-lib-${platform}-${arch}`;
 module.exports = require(nativePackageName);

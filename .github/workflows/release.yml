@@ -211,7 +211,7 @@ jobs:
           # Update main package version and all optionalDependencies
           cat > package.json << 'EOF'
           {
-            "name": "@utexo-protocol/rgb-lib",
+            "name": "@utexo/rgb-lib",
             "version": "${VERSION}",
             "description": "Node.js bindings for rgb-lib",
             "main": "index.js",
@@ -236,9 +236,9 @@ jobs:
             },
             "homepage": "https://github.com/UTEXO-Protocol/rgb-lib-nodejs#readme",
             "optionalDependencies": {
-              "@utexo-protocol/rgb-lib-linux-x64": "${VERSION}",
-              "@utexo-protocol/rgb-lib-linux-arm64": "${VERSION}",
-              "@utexo-protocol/rgb-lib-darwin-arm64": "${VERSION}"
+              "@utexo/rgb-lib-linux-x64": "${VERSION}",
+              "@utexo/rgb-lib-linux-arm64": "${VERSION}",
+              "@utexo/rgb-lib-darwin-arm64": "${VERSION}"
             }
           }
           EOF
@@ -300,7 +300,7 @@ jobs:
             ### Installation via npm (recommended)
             
             ```bash
-            npm install @utexo-protocol/rgb-lib
+            npm install @utexo/rgb-lib
             ```
             
             The correct platform-specific package will be installed automatically.
@@ -309,9 +309,9 @@ jobs:
             
             | Platform | npm package |
             |----------|-------------|
-            | Linux x64 | `@utexo-protocol/rgb-lib-linux-x64` |
-            | Linux ARM64 | `@utexo-protocol/rgb-lib-linux-arm64` |
-            | macOS ARM64 (Apple Silicon) | `@utexo-protocol/rgb-lib-darwin-arm64` |
+            | Linux x64 | `@utexo/rgb-lib-linux-x64` |
+            | Linux ARM64 | `@utexo/rgb-lib-linux-arm64` |
+            | macOS ARM64 (Apple Silicon) | `@utexo/rgb-lib-darwin-arm64` |
             
             ### Manual Installation
             

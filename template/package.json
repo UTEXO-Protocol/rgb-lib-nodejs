@@ -1,5 +1,5 @@
 {
-  "name": "@utexo-protocol/rgb-lib-%PLATFORM%",
+  "name": "@utexo/rgb-lib-%PLATFORM%",
   "version": "%VERSION%",
   "description": "Node.js bindings for rgb-lib on %PLATFORM%",
   "main": "wrapper.js",
