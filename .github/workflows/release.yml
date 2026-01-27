@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x64 (Ubuntu 20.04 for GLIBC 2.31 compatibility)
-          - runner: ubuntu-20.04
+          # Linux x64 (Ubuntu 22.04 for GLIBC 2.35 compatibility)
+          - runner: ubuntu-22.04
             os: linux
             cpu: x64
             platform: linux-x64
