@@ -73,11 +73,18 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
-      - name: Install SWIG (Linux)
+      - name: Install SWIG 4.2 (Linux)
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y swig
+          sudo apt-get install -y automake autoconf libtool bison byacc libpcre2-dev
+          git clone --depth 1 --branch v4.2.1 https://github.com/swig/swig.git /tmp/swig
+          cd /tmp/swig
+          ./autogen.sh
+          ./configure --prefix=/usr/local
+          make -j$(nproc)
+          sudo make install
+          swig -version
 
       - name: Install SWIG (macOS)
         if: matrix.os == 'darwin'
