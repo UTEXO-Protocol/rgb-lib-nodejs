@@ -1,0 +1,253 @@
+name: Release from Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Base version (e.g., 0.3.0-beta.9)'
+        required: true
+        type: string
+      suffix:
+        description: 'Branch suffix to append (e.g., branchname → v0.3.0-beta.9-branchname)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            os: linux
+            cpu: x64
+            platform: linux-x64
+            target: x86_64-unknown-linux-gnu
+            lib_filename: librgblibcffi
+            lib_ext: so
+          - runner: ubuntu-22.04-arm
+            os: linux
+            cpu: arm64
+            platform: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            lib_filename: librgblibcffi
+            lib_ext: so
+          - runner: macos-latest
+            os: darwin
+            cpu: arm64
+            platform: darwin-arm64
+            target: aarch64-apple-darwin
+            lib_filename: librgblibcffi
+            lib_ext: dylib
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Get full version
+        id: version
+        run: |
+          FULL_VERSION="${{ inputs.version }}-${{ inputs.suffix }}"
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $FULL_VERSION"
+        shell: bash
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Install SWIG 4.2 (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y automake autoconf libtool bison byacc libpcre2-dev
+          git clone --depth 1 --branch v4.2.1 https://github.com/swig/swig.git /tmp/swig
+          cd /tmp/swig
+          ./autogen.sh
+          ./configure --prefix=/usr/local
+          make -j$(nproc)
+          sudo make install
+          swig -version
+
+      - name: Install SWIG (macOS)
+        if: matrix.os == 'darwin'
+        run: brew install swig
+
+      - name: Prepare platform package
+        id: prepare
+        run: |
+          PLATFORM="${{ matrix.platform }}"
+          PLATFORM_DIR="platforms/$PLATFORM"
+          TARGET="${{ matrix.target }}"
+          FILENAME="${{ matrix.lib_filename }}"
+          EXT="${{ matrix.lib_ext }}"
+          VERSION="${{ steps.version.outputs.full_version }}"
+
+          rm -rf "$PLATFORM_DIR"
+          mkdir -p platforms
+          cp -a template "$PLATFORM_DIR"
+          cp -a rgb-lib "$PLATFORM_DIR/"
+
+          sed -i.bak "s/%TARGET%/$TARGET/g" "$PLATFORM_DIR/binding.gyp"
+          sed -i.bak "s/%PLATFORM%/$PLATFORM/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%OS%/${{ matrix.os }}/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%CPU%/${{ matrix.cpu }}/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%FILENAME%/$FILENAME/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%EXTENSION%/$EXT/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%TARGET%/$TARGET/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%VERSION%/$VERSION/g" "$PLATFORM_DIR/package.json"
+          sed -i.bak "s/%OS%/${{ matrix.os }}/g" "$PLATFORM_DIR/README.md"
+          sed -i.bak "s/%CPU%/${{ matrix.cpu }}/g" "$PLATFORM_DIR/README.md"
+
+          find "$PLATFORM_DIR" -name "*.bak" -delete
+
+          echo "platform_dir=$PLATFORM_DIR" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build Rust library (c-ffi)
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}/rgb-lib/bindings/c-ffi
+        run: cargo build --release --target ${{ matrix.target }} --features camel_case
+
+      - name: Generate SWIG wrapper
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
+        run: swig -c++ -javascript -node swig.i
+
+      - name: Build native Node.js module
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
+        run: |
+          npm install -g node-gyp
+          npm install --ignore-scripts
+          node-gyp configure
+          node-gyp build
+
+      - name: Publish platform package to npm
+        working-directory: ${{ steps.prepare.outputs.platform_dir }}
+        run: npm publish --access public --tag ${{ inputs.suffix }} || echo "Package version may already exist, continuing..."
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Package artifact
+        run: |
+          PLATFORM="${{ matrix.platform }}"
+          cd platforms
+          tar -czvf ../rgb-lib-nodejs-$PLATFORM.tar.gz $PLATFORM
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rgb-lib-nodejs-${{ matrix.platform }}
+          path: rgb-lib-nodejs-${{ matrix.platform }}.tar.gz
+          retention-days: 5
+
+  publish-main-package:
+    name: Publish Main Package
+    needs: build
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Get full version
+        id: version
+        run: |
+          FULL_VERSION="${{ inputs.version }}-${{ inputs.suffix }}"
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        run: |
+          VERSION="${{ steps.version.outputs.full_version }}"
+          cat > package.json << EOF
+          {
+            "name": "@utexo/rgb-lib",
+            "version": "$VERSION",
+            "description": "Node.js bindings for rgb-lib",
+            "main": "index.js",
+            "files": ["index.js"],
+            "scripts": {"test": "echo \"No tests\" && exit 1"},
+            "repository": {"type": "git", "url": "git+https://github.com/UTEXO-Protocol/rgb-lib-nodejs.git"},
+            "keywords": ["rgb", "bitcoin"],
+            "author": "UTEXO Protocol",
+            "license": "MIT",
+            "optionalDependencies": {
+              "@utexo/rgb-lib-linux-x64": "$VERSION",
+              "@utexo/rgb-lib-linux-arm64": "$VERSION",
+              "@utexo/rgb-lib-darwin-arm64": "$VERSION"
+            }
+          }
+          EOF
+          cat package.json
+
+      - name: Publish main package to npm
+        run: npm publish --access public --tag ${{ inputs.suffix }} || echo "Package version may already exist, continuing..."
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release:
+    name: Create GitHub Release
+    needs: [build, publish-main-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Get full version
+        id: version
+        run: echo "full_version=v${{ inputs.version }}-${{ inputs.suffix }}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.full_version }}
+          name: Release ${{ steps.version.outputs.full_version }}
+          body: |
+            ## Node.js bindings for rgb-lib (branch build)
+            
+            Version: `${{ steps.version.outputs.full_version }}`
+            Branch: `${{ github.ref_name }}`
+            
+            ### Installation
+            ```bash
+            npm install @utexo/rgb-lib@${{ inputs.version }}-${{ inputs.suffix }}
+            ```
+            
+            ### Platforms
+            - Linux x64
+            - Linux ARM64
+            - macOS ARM64 (Apple Silicon)
+          draft: false
+          prerelease: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
