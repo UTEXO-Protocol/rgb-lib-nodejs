@@ -813,6 +813,23 @@ exports.Wallet = class Wallet {
     }
 };
 
+exports.validateConsignment = function validateConsignment(filePath, indexerUrl, bitcoinNetwork) {
+    const params = { filePath, indexerUrl, bitcoinNetwork };
+    const expectedTypes = {
+        filePath: "string",
+        indexerUrl: "string",
+        bitcoinNetwork: "string",
+    };
+    validateTypes(params, expectedTypes);
+    validateEnumValues(
+        { bitcoinNetwork },
+        { bitcoinNetwork: BitcoinNetwork },
+    );
+    return JSON.parse(
+        lib.rgblib_validate_consignment(filePath, indexerUrl, bitcoinNetwork),
+    );
+};
+
 exports.Invoice = class Invoice {
     constructor(invoiceString) {
         const params = { invoiceString };
