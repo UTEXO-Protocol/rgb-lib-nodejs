@@ -51,7 +51,7 @@ jobs:
       - name: Get full version
         id: version
         run: |
-          FULL_VERSION="${{ inputs.version }}-${{ inputs.suffix }}"
+          FULL_VERSION="${{ inputs.version }}.$(echo '${{ inputs.suffix }}' | tr '-' '.')"
           echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "Version: $FULL_VERSION"
         shell: bash
@@ -171,16 +171,16 @@ jobs:
       - name: Get full version
         id: version
         run: |
-          FULL_VERSION="${{ inputs.version }}-${{ inputs.suffix }}"
+          FULL_VERSION="${{ inputs.version }}.$(echo '${{ inputs.suffix }}' | tr '-' '.')"
           echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update package.json version
         run: |
           VERSION="${{ steps.version.outputs.full_version }}"
-          cat > package.json << EOF
+          cat > package.json <<'PKGJSON'
           {
             "name": "@utexo/rgb-lib",
-            "version": "$VERSION",
+            "version": "PLACEHOLDER_VERSION",
             "description": "Node.js bindings for rgb-lib",
             "main": "index.js",
             "files": ["index.js"],
@@ -190,16 +190,18 @@ jobs:
             "author": "UTEXO Protocol",
             "license": "MIT",
             "optionalDependencies": {
-              "@utexo/rgb-lib-linux-x64": "$VERSION",
-              "@utexo/rgb-lib-linux-arm64": "$VERSION",
-              "@utexo/rgb-lib-darwin-arm64": "$VERSION"
+              "@utexo/rgb-lib-linux-x64": "PLACEHOLDER_VERSION",
+              "@utexo/rgb-lib-linux-arm64": "PLACEHOLDER_VERSION",
+              "@utexo/rgb-lib-darwin-arm64": "PLACEHOLDER_VERSION"
             }
           }
-          EOF
+          PKGJSON
+          sed -i 's/^ *//' package.json
+          sed -i "s/PLACEHOLDER_VERSION/$VERSION/g" package.json
           cat package.json
 
       - name: Publish main package to npm
-        run: npm publish --access public --tag ${{ inputs.suffix }} || echo "Package version may already exist, continuing..."
+        run: npm publish --access public --tag ${{ inputs.suffix }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -213,7 +215,7 @@ jobs:
     steps:
       - name: Get full version
         id: version
-        run: echo "full_version=v${{ inputs.version }}-${{ inputs.suffix }}" >> $GITHUB_OUTPUT
+        run: echo "full_version=v${{ inputs.version }}.$(echo '${{ inputs.suffix }}' | tr '-' '.')" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -239,7 +241,7 @@ jobs:
             
             ### Installation
             ```bash
-            npm install @utexo/rgb-lib@${{ inputs.version }}-${{ inputs.suffix }}
+            npm install @utexo/rgb-lib@${{ steps.version.outputs.full_version }}
             ```
             
             ### Platforms

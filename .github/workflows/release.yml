@@ -49,6 +49,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: utexo-master
           submodules: recursive
 
       - name: Get rgb-lib version
@@ -271,6 +272,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: utexo-master
 
       - name: Get version info
         id: version
