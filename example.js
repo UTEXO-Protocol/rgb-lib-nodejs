@@ -240,7 +240,7 @@ function main() {
         try {
             const vssServerUrl =
                 process.env.VSS_SERVER_URL || "http://localhost:8081/vss";
-            // In production, derive signing_key from the wallet; here we use a placeholder.
+
             const vssConfig = {
                 server_url: vssServerUrl,
                 store_id: "example_nodejs_store",
@@ -262,7 +262,7 @@ function main() {
             let backupInfo = wallet.vssBackupInfo(vssClient);
             console.log("VSS backup info: " + JSON.stringify(backupInfo));
 
-            // Clean up: delete backup on server (matches Rust examples)
+            // Clean up: delete backup on server 
             vssClient.deleteBackup();
             console.log("VSS backup deleted");
 
