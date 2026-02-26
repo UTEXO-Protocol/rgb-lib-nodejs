@@ -11,6 +11,14 @@ on:
         description: 'Branch suffix to append (e.g., branchname → v0.3.0-beta.9-branchname)'
         required: true
         type: string
+      rgb_lib_repo:
+        description: 'rgb-lib repo override (e.g., dcorral/rgb-lib). Leave empty for UTEXO-Protocol/rgb-lib'
+        required: false
+        type: string
+      rgb_lib_branch:
+        description: 'rgb-lib branch override (e.g., vss-backup). Leave empty for utexo-master'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -47,6 +55,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Override rgb-lib submodule
+        if: inputs.rgb_lib_repo != '' || inputs.rgb_lib_branch != ''
+        run: |
+          REPO="${{ inputs.rgb_lib_repo || 'UTEXO-Protocol/rgb-lib' }}"
+          BRANCH="${{ inputs.rgb_lib_branch || 'utexo-master' }}"
+          cd rgb-lib
+          git remote set-url origin "https://github.com/${REPO}.git"
+          git fetch origin "$BRANCH"
+          git checkout "origin/$BRANCH"
+          cd ..
+        shell: bash
 
       - name: Get full version
         id: version
