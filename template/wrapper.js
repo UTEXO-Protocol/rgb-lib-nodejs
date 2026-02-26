@@ -200,6 +200,42 @@ exports.restoreKeys = function (bitcoinNetwork, mnemonic) {
     return JSON.parse(lib.rgblib_restore_keys(bitcoinNetwork, mnemonic));
 };
 
+exports.restoreFromVss = function (config, targetDir) {
+    const expectedTypes = {
+        server_url: "string",
+        store_id: "string",
+        signing_key: "string",
+    };
+    validateTypes(config, expectedTypes);
+    validateTypes({ targetDir }, { targetDir: "string" });
+    return lib.rgblib_restore_from_vss(JSON.stringify(config), targetDir);
+};
+
+exports.VssBackupClient = class VssBackupClient {
+    constructor(config) {
+        const expectedTypes = {
+            server_url: "string",
+            store_id: "string",
+            signing_key: "string",
+        };
+        validateTypes(config, expectedTypes);
+        this.client = lib.rgblib_new_vss_backup_client(JSON.stringify(config));
+    }
+
+    drop() {
+        lib.free_vss_backup_client(this.client);
+        this.client = null;
+    }
+
+    encryptionEnabled() {
+        return lib.rgblib_vss_backup_client_encryption_enabled(this.client);
+    }
+
+    deleteBackup() {
+        lib.rgblib_vss_delete_backup(this.client);
+    }
+};
+
 exports.WalletData = class WalletData {
     constructor(walletData) {
         const expectedTypes = {
@@ -242,6 +278,38 @@ exports.Wallet = class Wallet {
 
     backupInfo() {
         return JSON.parse(lib.rgblib_backup_info(this.wallet));
+    }
+
+    configureVssBackup(config) {
+        const expectedTypes = {
+            server_url: "string",
+            store_id: "string",
+            signing_key: "string",
+        };
+        validateTypes(config, expectedTypes);
+        lib.rgblib_configure_vss_backup(this.wallet, JSON.stringify(config));
+    }
+
+    disableVssAutoBackup() {
+        lib.rgblib_disable_vss_auto_backup(this.wallet);
+    }
+
+    vssBackup(vssBackupClient) {
+        if (!vssBackupClient || !vssBackupClient.client) {
+            throw new Error("vssBackupClient must be a VssBackupClient instance");
+        }
+        return JSON.parse(
+            lib.rgblib_vss_backup(this.wallet, vssBackupClient.client),
+        );
+    }
+
+    vssBackupInfo(vssBackupClient) {
+        if (!vssBackupClient || !vssBackupClient.client) {
+            throw new Error("vssBackupClient must be a VssBackupClient instance");
+        }
+        return JSON.parse(
+            lib.rgblib_vss_backup_info(this.wallet, vssBackupClient.client),
+        );
     }
 
     blindReceive(
