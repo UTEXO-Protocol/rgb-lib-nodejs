@@ -235,11 +235,10 @@ function main() {
     wallet.drop();
 
     // VSS backup example (optional: only runs when built with vss feature;
-    // requires a running VSS server, e.g. VSS_SERVER_URL=http://localhost:8081/vss)
+    // requires a running VSS server
     if (typeof rgblib.VssBackupClient === "function") {
         try {
-            const vssServerUrl =
-                process.env.VSS_SERVER_URL || "http://localhost:8081/vss";
+            const vssServerUrl = "http://localhost:8081/vss";
 
             const vssConfig = {
                 server_url: vssServerUrl,
@@ -248,9 +247,6 @@ function main() {
                     "0000000000000000000000000000000000000000000000000000000000000001",
             };
             const vssClient = new rgblib.VssBackupClient(vssConfig);
-            console.log(
-                "VSS encryption enabled: " + vssClient.encryptionEnabled(),
-            );
 
             wallet = new rgblib.Wallet(new rgblib.WalletData(walletData));
             wallet.configureVssBackup(vssConfig);
@@ -262,7 +258,6 @@ function main() {
             let backupInfo = wallet.vssBackupInfo(vssClient);
             console.log("VSS backup info: " + JSON.stringify(backupInfo));
 
-            // Clean up: delete backup on server 
             vssClient.deleteBackup();
             console.log("VSS backup deleted");
 

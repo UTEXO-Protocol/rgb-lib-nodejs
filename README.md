@@ -40,17 +40,6 @@ let keys = rgblib.generateKeys(rgblib.BitcoinNetwork.Regtest);
 console.log(keys);
 ```
 
-## VSS backup (optional)
-
-When built with the `vss` feature, the bindings expose [VSS (Versioned Storage Service)](https://github.com/UTEXO-Protocol/rgb-lib) cloud backup:
-
-- **`rgblib.restoreFromVss(config, targetDir)`** — restore a wallet from VSS backup.
-- **`rgblib.VssBackupClient`** — client for a VSS server (`config`: `{ server_url, store_id, signing_key }`). Methods: `encryptionEnabled()`, `deleteBackup()`, `drop()`.
-- **`wallet.configureVssBackup(config)`** — enable VSS backup for the wallet.
-- **`wallet.disableVssAutoBackup()`** — turn off automatic VSS backup.
-- **`wallet.vssBackup(vssBackupClient)`** — run a backup (returns version info).
-- **`wallet.vssBackupInfo(vssBackupClient)`** — get backup info.
-
 > :warning: **Warning: memory will be leaked if not taken care of manually**
 >
 > Check the example to see how you can manually avoid memory leaks
