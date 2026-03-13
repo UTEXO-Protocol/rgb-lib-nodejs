@@ -898,6 +898,34 @@ exports.validateConsignment = function validateConsignment(filePath, indexerUrl,
     );
 };
 
+exports.validateConsignmentOffchain = function validateConsignmentOffchain(
+    filePath,
+    txid,
+    indexerUrl,
+    bitcoinNetwork,
+) {
+    const params = { filePath, txid, indexerUrl, bitcoinNetwork };
+    const expectedTypes = {
+        filePath: "string",
+        txid: "string",
+        indexerUrl: "string",
+        bitcoinNetwork: "string",
+    };
+    validateTypes(params, expectedTypes);
+    validateEnumValues(
+        { bitcoinNetwork },
+        { bitcoinNetwork: BitcoinNetwork },
+    );
+    return JSON.parse(
+        lib.rgblib_validate_consignment_offchain(
+            filePath,
+            txid,
+            indexerUrl,
+            bitcoinNetwork,
+        ),
+    );
+};
+
 exports.Invoice = class Invoice {
     constructor(invoiceString) {
         const params = { invoiceString };
