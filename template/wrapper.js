@@ -102,7 +102,16 @@ function validateArrayElements(array, expectedElementType) {
 function validateEnumValues(object, enumValidValues) {
     Object.keys(enumValidValues).forEach((key) => {
         const allowedValues = Object.values(enumValidValues[key]);
-        if (!allowedValues.includes(object[key])) {
+        const value = object[key];
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => {
+                if (!allowedValues.includes(item)) {
+                    throw new Error(
+                        `${key}[${index}] is invalid. Expected one of: ${allowedValues.join(", ")}`,
+                    );
+                }
+            });
+        } else if (!allowedValues.includes(value)) {
             throw new Error(
                 `${key} is invalid. Expected one of: ${allowedValues.join(", ")}`,
             );
@@ -157,6 +166,7 @@ exports.BitcoinNetwork = BitcoinNetwork = {
     Testnet: "Testnet",
     Testnet4: "Testnet4",
     Signet: "Signet",
+    SignetCustom: "SignetCustom",
     Regtest: "Regtest",
 };
 
@@ -198,6 +208,20 @@ exports.restoreKeys = function (bitcoinNetwork, mnemonic) {
     );
     validateTypes({ mnemonic }, { mnemonic: "string" });
     return JSON.parse(lib.rgblib_restore_keys(bitcoinNetwork, mnemonic));
+};
+
+exports.SinglesigKeys = class SinglesigKeys {
+    constructor(singlesigKeys) {
+        const expectedTypes = {
+            accountXpubVanilla: "string",
+            accountXpubColored: "string",
+            vanillaKeychain: "u8?",
+            masterFingerprint: "string",
+            mnemonic: "string?",
+        };
+        validateTypes(singlesigKeys, expectedTypes);
+        return singlesigKeys;
+    }
 };
 
 exports.restoreFromVss = function (config, targetDir) {
@@ -242,23 +266,25 @@ exports.WalletData = class WalletData {
             dataDir: "string",
             bitcoinNetwork: "string",
             databaseType: "string",
-            accountXpubVanilla: "string",
-            accountXpubColored: "string",
             maxAllocationsPerUtxo: "u32",
-            vanillaKeychain: "u8?",
+            supportedSchemas: "array[string]",
         };
         validateTypes(walletData, expectedTypes);
         validateEnumValues(walletData, {
             bitcoinNetwork: BitcoinNetwork,
             databaseType: DatabaseType,
+            supportedSchemas: AssetSchema,
         });
         return walletData;
     }
 };
 
 exports.Wallet = class Wallet {
-    constructor(walletData) {
-        this.wallet = lib.rgblib_new_wallet(JSON.stringify(walletData));
+    constructor(walletData, singlesigKeys) {
+        this.wallet = lib.rgblib_new_wallet(
+            JSON.stringify(walletData),
+            JSON.stringify(singlesigKeys),
+        );
     }
 
     drop() {
@@ -315,21 +341,21 @@ exports.Wallet = class Wallet {
     blindReceive(
         assetId,
         assignment,
-        durationSeconds,
+        expirationTimestamp,
         transportEndpoints,
         minConfirmations,
     ) {
         const params = {
             assetId,
             assignment,
-            durationSeconds,
+            expirationTimestamp,
             transportEndpoints,
             minConfirmations,
         };
         const expectedTypes = {
             assetId: "string?",
             assignment: "string",
-            durationSeconds: "u32?",
+            expirationTimestamp: "u64?",
             transportEndpoints: "array[string]",
             minConfirmations: "u8",
         };
@@ -339,7 +365,7 @@ exports.Wallet = class Wallet {
                 this.wallet,
                 assetId,
                 assignment,
-                durationSeconds,
+                expirationTimestamp,
                 JSON.stringify(transportEndpoints),
                 minConfirmations,
             ),
@@ -408,6 +434,50 @@ exports.Wallet = class Wallet {
         );
     }
 
+    deleteTransfers(batchTransferIdx, noAssetOnly) {
+        const params = {
+            batchTransferIdx,
+            noAssetOnly,
+        };
+        const expectedTypes = {
+            batchTransferIdx: "i32?",
+            noAssetOnly: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return JSON.parse(
+            lib.rgblib_delete_transfers(
+                this.wallet,
+                batchTransferIdx,
+                noAssetOnly,
+            ),
+        );
+    }
+
+    failTransfers(online, batchTransferIdx, noAssetOnly, skipSync) {
+        const params = {
+            online,
+            batchTransferIdx,
+            noAssetOnly,
+            skipSync,
+        };
+        const expectedTypes = {
+            online: "object",
+            batchTransferIdx: "i32?",
+            noAssetOnly: "boolean",
+            skipSync: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return JSON.parse(
+            lib.rgblib_fail_transfers(
+                this.wallet,
+                online,
+                batchTransferIdx,
+                noAssetOnly,
+                skipSync,
+            ),
+        );
+    }
+
     getAddress() {
         return lib.rgblib_get_address(this.wallet);
     }
@@ -419,6 +489,15 @@ exports.Wallet = class Wallet {
         };
         validateTypes(params, expectedTypes);
         return JSON.parse(lib.rgblib_get_asset_balance(this.wallet, assetId));
+    }
+
+    getAssetMetadata(assetId) {
+        const params = { assetId };
+        const expectedTypes = {
+            assetId: "string",
+        };
+        validateTypes(params, expectedTypes);
+        return JSON.parse(lib.rgblib_get_asset_metadata(this.wallet, assetId));
     }
 
     getBtcBalance(online, skipSync) {
@@ -555,6 +634,9 @@ exports.Wallet = class Wallet {
             filterAssetSchemas: "array[string]",
         };
         validateTypes(params, expectedTypes);
+        validateEnumValues(params, {
+            filterAssetSchemas: AssetSchema,
+        });
         return JSON.parse(
             lib.rgblib_list_assets(
                 this.wallet,
@@ -633,57 +715,22 @@ exports.Wallet = class Wallet {
         );
     }
 
-    deleteTransfers(batchTransferIdx, noAssetOnly) {
-        const params = {
-            batchTransferIdx,
-            noAssetOnly,
-        };
-        const expectedTypes = {
-            batchTransferIdx: "i32?",
-            noAssetOnly: "boolean",
-        };
-        validateTypes(params, expectedTypes);
-        return JSON.parse(
-            lib.rgblib_delete_transfers(
-                this.wallet,
-                batchTransferIdx,
-                noAssetOnly,
-            ),
-        );
-    }
-
-    failTransfers(online, batchTransferIdx, noAssetOnly, skipSync) {
-        const params = {
-            online,
-            batchTransferIdx,
-            noAssetOnly,
-            skipSync,
-        };
-        const expectedTypes = {
-            online: "object",
-            batchTransferIdx: "i32?",
-            noAssetOnly: "boolean",
-            skipSync: "boolean",
-        };
-        validateTypes(params, expectedTypes);
-        return JSON.parse(
-            lib.rgblib_fail_transfers(
-                this.wallet,
-                online,
-                batchTransferIdx,
-                noAssetOnly,
-                skipSync,
-            ),
-        );
-    }
-
-    send(online, recipientMap, donation, feeRate, minConfirmations, skipSync) {
+    send(
+        online,
+        recipientMap,
+        donation,
+        feeRate,
+        minConfirmations,
+        expirationTimestamp,
+        skipSync,
+    ) {
         const params = {
             online,
             recipientMap,
             donation,
             feeRate,
             minConfirmations,
+            expirationTimestamp,
             skipSync,
         };
         const expectedTypes = {
@@ -692,6 +739,7 @@ exports.Wallet = class Wallet {
             donation: "boolean",
             feeRate: "u64",
             minConfirmations: "u8",
+            expirationTimestamp: "u64?",
             skipSync: "boolean",
         };
         validateTypes(params, expectedTypes);
@@ -703,18 +751,29 @@ exports.Wallet = class Wallet {
                 donation,
                 feeRate,
                 minConfirmations,
+                expirationTimestamp,
                 skipSync,
             ),
         );
     }
 
-    sendBegin(online, recipientMap, donation, feeRate, minConfirmations) {
+    sendBegin(
+        online,
+        recipientMap,
+        donation,
+        feeRate,
+        minConfirmations,
+        expirationTimestamp,
+        dryRun,
+    ) {
         const params = {
             online,
             recipientMap,
             donation,
             feeRate,
             minConfirmations,
+            expirationTimestamp,
+            dryRun,
         };
         const expectedTypes = {
             online: "object",
@@ -722,6 +781,8 @@ exports.Wallet = class Wallet {
             donation: "boolean",
             feeRate: "u64",
             minConfirmations: "u8",
+            expirationTimestamp: "u64?",
+            dryRun: "boolean",
         };
         validateTypes(params, expectedTypes);
         return lib.rgblib_send_begin(
@@ -731,28 +792,8 @@ exports.Wallet = class Wallet {
             donation,
             feeRate,
             minConfirmations,
-        );
-    }
-
-    sendEnd(online, signedPsbt, skipSync) {
-        const params = {
-            online,
-            signedPsbt,
-            skipSync,
-        };
-        const expectedTypes = {
-            online: "object",
-            signedPsbt: "string",
-            skipSync: "boolean",
-        };
-        validateTypes(params, expectedTypes);
-        return JSON.parse(
-            lib.rgblib_send_end(
-                this.wallet,
-                online,
-                signedPsbt,
-                skipSync,
-            ),
+            expirationTimestamp,
+            dryRun,
         );
     }
 
@@ -782,33 +823,7 @@ exports.Wallet = class Wallet {
         );
     }
 
-    sendBtcBegin(online, address, amount, feeRate, skipSync) {
-        const params = {
-            online,
-            address,
-            amount,
-            feeRate,
-            skipSync,
-        };
-        const expectedTypes = {
-            online: "object",
-            address: "string",
-            amount: "u64",
-            feeRate: "u64",
-            skipSync: "boolean",
-        };
-        validateTypes(params, expectedTypes);
-        return lib.rgblib_send_btc_begin(
-            this.wallet,
-            online,
-            address,
-            amount,
-            feeRate,
-            skipSync,
-        );
-    }
-
-    sendBtcEnd(online, signedPsbt, skipSync) {
+    sendEnd(online, signedPsbt, skipSync) {
         const params = {
             online,
             signedPsbt,
@@ -820,11 +835,8 @@ exports.Wallet = class Wallet {
             skipSync: "boolean",
         };
         validateTypes(params, expectedTypes);
-        return lib.rgblib_send_btc_end(
-            this.wallet,
-            online,
-            signedPsbt,
-            skipSync,
+        return JSON.parse(
+            lib.rgblib_send_end(this.wallet, online, signedPsbt, skipSync),
         );
     }
 
@@ -849,21 +861,21 @@ exports.Wallet = class Wallet {
     witnessReceive(
         assetId,
         assignment,
-        durationSeconds,
+        expirationTimestamp,
         transportEndpoints,
         minConfirmations,
     ) {
         const params = {
             assetId,
             assignment,
-            durationSeconds,
+            expirationTimestamp,
             transportEndpoints,
             minConfirmations,
         };
         const expectedTypes = {
             assetId: "string?",
             assignment: "string",
-            durationSeconds: "u32?",
+            expirationTimestamp: "u64?",
             transportEndpoints: "array[string]",
             minConfirmations: "u8",
         };
@@ -873,7 +885,7 @@ exports.Wallet = class Wallet {
                 this.wallet,
                 assetId,
                 assignment,
-                durationSeconds,
+                expirationTimestamp,
                 JSON.stringify(transportEndpoints),
                 minConfirmations,
             ),
