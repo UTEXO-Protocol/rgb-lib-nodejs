@@ -824,3 +824,27 @@ exports.Wallet = class Wallet {
         );
     }
 };
+
+exports.Invoice = class Invoice {
+    constructor(invoiceString) {
+        const params = { invoiceString };
+        const expectedTypes = {
+            invoiceString: "string",
+        };
+        validateTypes(params, expectedTypes);
+        this.invoice = lib.rgblib_invoice_new(invoiceString);
+    }
+
+    drop() {
+        lib.free_invoice(this.invoice);
+        this.invoice = null;
+    }
+
+    invoiceData() {
+        return JSON.parse(lib.rgblib_invoice_data(this.invoice));
+    }
+
+    invoiceString() {
+        return lib.rgblib_invoice_string(this.invoice);
+    }
+};
