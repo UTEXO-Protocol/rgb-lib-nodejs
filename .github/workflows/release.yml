@@ -145,7 +145,7 @@ jobs:
 
       - name: Build Rust library (c-ffi)
         working-directory: ${{ steps.prepare.outputs.platform_dir }}/rgb-lib/bindings/c-ffi
-        run: cargo build --release --target ${{ matrix.target }} --features camel_case
+        run: cargo build --release --target ${{ matrix.target }} --features camel_case,vss
         shell: bash
 
       - name: Generate SWIG wrapper

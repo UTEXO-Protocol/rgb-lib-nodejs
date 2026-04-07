@@ -250,6 +250,43 @@ function main() {
     console.log("Dropping wallets...");
     rgblib.dropOnline(online);
     wallet.drop();
+
+    // VSS backup example (optional: only runs when built with vss feature;
+    // requires a running VSS server
+    if (typeof rgblib.VssBackupClient === "function") {
+        try {
+            const vssServerUrl = "http://localhost:8081/vss";
+
+            const vssConfig = {
+                server_url: vssServerUrl,
+                store_id: "example_nodejs_store",
+                signing_key:
+                    "0000000000000000000000000000000000000000000000000000000000000001",
+            };
+            const vssClient = new rgblib.VssBackupClient(vssConfig);
+
+            wallet = new rgblib.Wallet(new rgblib.WalletData(walletData));
+            wallet.configureVssBackup(vssConfig);
+            online = wallet.goOnline(false, "tcp://localhost:50001");
+
+            let versionInfo = wallet.vssBackup(vssClient);
+            console.log("VSS backup version: " + JSON.stringify(versionInfo));
+
+            let backupInfo = wallet.vssBackupInfo(vssClient);
+            console.log("VSS backup info: " + JSON.stringify(backupInfo));
+
+            vssClient.deleteBackup();
+            console.log("VSS backup deleted");
+
+            vssClient.drop();
+            rgblib.dropOnline(online);
+            wallet.drop();
+        } catch (e) {
+            console.log(
+                "VSS example skipped (no server or error): " + e.message,
+            );
+        }
+    }
 }
 
 try {

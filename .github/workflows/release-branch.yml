@@ -64,7 +64,7 @@ jobs:
           cd rgb-lib
           git remote set-url origin "https://github.com/${REPO}.git"
           git fetch origin "$BRANCH"
-          git checkout "origin/$BRANCH"
+          git checkout FETCH_HEAD
           cd ..
         shell: bash
 
@@ -138,7 +138,7 @@ jobs:
 
       - name: Build Rust library (c-ffi)
         working-directory: ${{ steps.prepare.outputs.platform_dir }}/rgb-lib/bindings/c-ffi
-        run: cargo build --release --target ${{ matrix.target }} --features camel_case
+        run: cargo build --release --target ${{ matrix.target }} --features camel_case,vss
 
       - name: Generate SWIG wrapper
         working-directory: ${{ steps.prepare.outputs.platform_dir }}

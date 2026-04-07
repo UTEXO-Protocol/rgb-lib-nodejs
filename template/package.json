@@ -24,7 +24,7 @@
     "prepack": "touch rgb-lib/.npmignore",
     "postpack": "rm rgb-lib/.npmignore",
     "build": "npm run rust-build && npm run swig-build",
-    "rust-build": "cross build -r -F camel_case --manifest-path ./rgb-lib/bindings/c-ffi/Cargo.toml --target %TARGET%",
+    "rust-build": "cross build -r -F camel_case,vss --manifest-path ./rgb-lib/bindings/c-ffi/Cargo.toml --target %TARGET%",
     "swig-build": "swig -javascript -node -c++ swig.i"
   },
   "author": "Zoe Faltibà <zoefaltiba@gmail.com>",
