@@ -121,14 +121,24 @@ function validateEnumValues(object, enumValidValues) {
 
 function validateTypes(values, expectedTypes) {
     Object.keys(expectedTypes).forEach((key) => {
-        if (!(key in values)) {
-            throw new Error(`${key} must be defined`);
-        }
         const type = expectedTypes[key];
         const isOptional = type.endsWith("?");
+        const baseType = isOptional ? type.slice(0, -1) : type;
+
+        if (isOptional) {
+            if (
+                !(key in values) ||
+                values[key] === undefined ||
+                values[key] === null
+            ) {
+                return;
+            }
+        } else if (!(key in values) || values[key] === undefined) {
+            throw new Error(`${key} must be defined`);
+        }
+
         let val = values[key];
         let actualType = trueTypeOf(val);
-        const baseType = isOptional ? type.slice(0, -1) : type;
 
         if (val !== null && isNumberType(baseType)) {
             if (actualType != "string") {
@@ -144,13 +154,8 @@ function validateTypes(values, expectedTypes) {
             }
             const elementType = arrayMatch[1];
             validateArrayElements(val, elementType);
-        } else if (
-            !isTypeSubset(actualType, baseType) &&
-            !(isOptional && val === null)
-        ) {
-            throw new Error(
-                `${key} type must be ${baseType}${isOptional ? " or null" : ""}`,
-            );
+        } else if (!isTypeSubset(actualType, baseType)) {
+            throw new Error(`${key} type must be ${baseType}`);
         }
     });
 }
@@ -268,6 +273,7 @@ exports.WalletData = class WalletData {
             databaseType: "string",
             maxAllocationsPerUtxo: "u32",
             supportedSchemas: "array[string]",
+            reuseAddresses: "boolean?",
         };
         validateTypes(walletData, expectedTypes);
         validateEnumValues(walletData, {
@@ -480,6 +486,14 @@ exports.Wallet = class Wallet {
 
     getAddress() {
         return lib.rgblib_get_address(this.wallet);
+    }
+
+    rotateVanillaAddress() {
+        return lib.rgblib_rotate_vanilla_address(this.wallet);
+    }
+
+    rotateColoredAddress() {
+        return lib.rgblib_rotate_colored_address(this.wallet);
     }
 
     getAssetBalance(assetId) {
