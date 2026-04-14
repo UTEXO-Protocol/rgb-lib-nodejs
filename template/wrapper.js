@@ -837,6 +837,47 @@ exports.Wallet = class Wallet {
         );
     }
 
+    sendBtcBegin(online, address, amount, feeRate, skipSync) {
+        const params = {
+            online,
+            address,
+            amount,
+            feeRate,
+            skipSync,
+        };
+        const expectedTypes = {
+            online: "object",
+            address: "string",
+            amount: "u64",
+            feeRate: "u64",
+            skipSync: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return lib.rgblib_send_btc_begin(
+            this.wallet,
+            online,
+            address,
+            amount,
+            feeRate,
+            skipSync,
+        );
+    }
+
+    sendBtcEnd(online, signedPsbt, skipSync) {
+        const params = {
+            online,
+            signedPsbt,
+            skipSync,
+        };
+        const expectedTypes = {
+            online: "object",
+            signedPsbt: "string",
+            skipSync: "boolean",
+        };
+        validateTypes(params, expectedTypes);
+        return lib.rgblib_send_btc_end(this.wallet, online, signedPsbt, skipSync);
+    }
+
     sendEnd(online, signedPsbt, skipSync) {
         const params = {
             online,
